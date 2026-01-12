@@ -8,7 +8,7 @@ venv/
 .env/
 .venv/
 
-# Data / models / outputs (optional – adjust to your project)
+# Data / models / outputs
 data/
 outputs/
 models/
