@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Data / models / outputs (optional – adjust to your project)
+data/
+outputs/
+models/
+mlruns/
+AutogluonModels/
+
+# VS Code
+.vscode/
