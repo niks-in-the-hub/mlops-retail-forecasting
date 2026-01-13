@@ -3,7 +3,7 @@ autogluon.timeseries==1.1.0
 
 # MLOps Tools
 mlflow==2.9.2
-metaflow==2.11.7
+luigi==3.5.0
 
 # Data Processing
 pandas==2.1.4
