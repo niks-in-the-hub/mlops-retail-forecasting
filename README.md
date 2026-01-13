@@ -14,14 +14,14 @@ A production-ready MLOps pipeline for retail demand forecasting using AutoGluon 
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Virtual environment (recommended)
 
 ## Installation
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/niks-in-the-hub/mlops-retail-forecasting.git
    cd mlops-retail-forecasting
    ```
 
@@ -80,7 +80,7 @@ mlops-retail-forecasting/
 ├── requirements.txt          # Python dependencies
 ├── run.py                   # Main entry point
 ├── config.yaml              # Pipeline configuration
-├── checking.py              # Validation and testing utilities
+utilities
 ├── .gitignore              # Git ignore rules
 │
 ├── src/                    # Source code
@@ -123,12 +123,6 @@ mlflow ui
 
 Navigate to `http://localhost:5000` to access the MLflow UI.
 
-## Testing
-
-Run validation checks:
-```bash
-python checking.py
-```
 
 ## Model Performance
 
