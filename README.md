@@ -4,10 +4,12 @@ A production-ready MLOps pipeline for retail demand forecasting using AutoGluon 
 
 ## Features
 
+- **Zero-Shot Forecasting**: Instant predictions using pre-trained Chronos models (no training required)
 - **Automated ML Pipeline**: End-to-end forecasting with AutoGluon TimeSeries
 - **MLOps Integration**: Experiment tracking with MLflow, workflow orchestration with Luigi
 - **Production Ready**: Configurable preprocessing, model training, and prediction pipelines
-- **Multiple Modes**: Quick prototyping and production deployment options
+- **Multiple Modes**: Quick prototyping, medium-scale, and production deployment options
+- **YAML Configuration**: Centralized configuration management with mode-specific overrides
 - **Comprehensive Logging**: Structured logging for monitoring and debugging
 
 ## Prerequisites
@@ -43,25 +45,32 @@ Run the pipeline with default settings:
 python run.py quick
 ```
 
-### Production Pipeline
+### Available Modes
 
-Run the full production pipeline:
+Run with different predefined configurations:
 ```bash
-python run.py production
+python run.py quick      # Fast test (3 stores, 2 mins)
+python run.py medium     # Medium run (10 stores, 10 mins)  
+python run.py production # Full production (all stores, 30 mins)
 ```
 
-### Custom Pipeline
+### Zero-Shot Mode
 
-Run with specific configuration:
-```bash
-python run.py pipeline --config config.yaml
+Enable instant forecasting without training by editing `config.yaml`:
+```yaml
+model:
+  zero_shot: yes
+  zero_shot_model: chronos-t5-base  # Options: tiny, small, base, large
 ```
 
-### Available Commands
+### Configuration
 
-- `quick` - Fast pipeline for prototyping
-- `production` - Full production pipeline with all features
-- `pipeline` - Custom pipeline with configuration file
+All settings are managed through `config.yaml`:
+- **Pipeline modes**: Switch between quick/medium/production
+- **Zero-shot settings**: Enable pre-trained models
+- **Data parameters**: Configure target variables and forecast horizon
+- **Training settings**: Adjust time limits and model quality presets
+- **Output paths**: Customize where results are saved
 
 ## Project Structure
 
@@ -70,23 +79,28 @@ mlops-retail-forecasting/
 ├── README.md                 # Project documentation
 ├── requirements.txt          # Python dependencies
 ├── run.py                   # Main entry point
+├── config.yaml              # Pipeline configuration
 ├── checking.py              # Validation and testing utilities
 ├── .gitignore              # Git ignore rules
 │
 ├── src/                    # Source code
-│   ├── pipeline.py         # Pipeline orchestration
+│   ├── pipeline.py         # Luigi task orchestration
 │   ├── preprocess.py       # Data preprocessing
-│   ├── train.py           # Model training
+│   ├── train.py           # Model training and zero-shot
 │   ├── predict.py         # Prediction generation
 │   └── utils.py           # Utility functions
 │
+├── notebooks/              # Jupyter notebooks
+│   └── zero_shot_comparison.ipynb  # Zero-shot analysis
+│
 ├── data/                   # Data directory
-│   ├── raw/               # Raw input data
-│   └── processed/         # Processed data
+│   ├── train.csv          # Training data
+│   └── store.csv          # Store metadata
 │
 ├── models/                # Trained models
 ├── AutogluonModels/       # AutoGluon model artifacts
 ├── outputs/               # Pipeline outputs
+├── luigi_outputs/         # Luigi task outputs
 ├── mlruns/               # MLflow experiment tracking
 └── venv/                 # Virtual environment
 ```
