@@ -1,5 +1,6 @@
 """
 Main entry point for the retail forecasting pipeline with Luigi orchestration.
+Reads configuration from config.yaml.
 """
 
 import sys
@@ -9,7 +10,8 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from pipeline import QuickPipeline, ProductionPipeline, ForecastingPipeline
+from pipeline import ForecastingPipeline
+from utils import load_config, setup_logging
 
 
 def print_usage():
@@ -17,88 +19,112 @@ def print_usage():
     print("\n" + "="*70)
     print("RETAIL FORECASTING PIPELINE - LUIGI ORCHESTRATION")
     print("="*70)
-    print("\nAvailable modes:")
-    print("  python run.py quick        - Quick test (3 stores, 2 mins)")
-    print("  python run.py medium       - Medium run (10 stores, 10 mins)")
-    print("  python run.py production   - Production (all stores, 30 mins)")
-    print("\nWhat Luigi does:")
-    print("  - Tracks task dependencies")
-    print("  - Skips completed tasks (resume capability)")
-    print("  - Logs execution flow")
-    print("  - Creates task dependency graph")
+    print("\nUsage:")
+    print("  python run.py [mode]")
+    print("\nAvailable modes (edit in config.yaml):")
+    print("  quick      - Quick test (3 stores, 2 mins)")
+    print("  medium     - Medium run (10 stores, 10 mins)")
+    print("  production - Production (all stores, 30 mins)")
+    print("\nConfiguration:")
+    print("  Edit config.yaml to change settings")
+    print("  Change 'pipeline: mode:' to switch modes")
+    print("  Set 'zero_shot: yes' for instant forecasts")
     print("="*70 + "\n")
 
 
 def main():
-    """Run the pipeline using Luigi."""
+    """Run the pipeline using Luigi with config.yaml."""
     
-    # Check for arguments
-    if len(sys.argv) > 1:
-        mode = sys.argv[1].lower()
-    else:
-        print_usage()
-        print("No mode specified. Running QUICK mode by default...\n")
-        mode = 'quick'
+    logger = setup_logging()
     
-    if mode not in ['quick', 'medium', 'production']:
-        print(f"\n Error: Unknown mode '{mode}'")
-        print_usage()
+    # Load config
+    try:
+        config = load_config()
+    except Exception as e:
+        logger.error(f"Failed to load config: {e}")
+        print("\n❌ Error: Could not load config.yaml")
+        print("Make sure config.yaml exists in the project root.")
         sys.exit(1)
     
+    # Get mode from command line or config
+    if len(sys.argv) > 1:
+        requested_mode = sys.argv[1].lower()
+        
+        # Validate mode
+        available_modes = list(config.get('modes', {}).keys())
+        if requested_mode not in available_modes:
+            print(f"\n❌ Error: Unknown mode '{requested_mode}'")
+            print(f"Available modes: {', '.join(available_modes)}")
+            print("\nEdit config.yaml and change 'pipeline: mode:' to one of the available modes.")
+            print_usage()
+            sys.exit(1)
+        
+        # Update config with requested mode
+        config['pipeline']['mode'] = requested_mode
+        
+        # Re-apply mode settings
+        if requested_mode in config.get('modes', {}):
+            mode_config = config['modes'][requested_mode]
+            for key, value in mode_config.items():
+                if isinstance(value, dict) and key in config:
+                    config[key].update(value)
+                else:
+                    config[key] = value
+        
+        # Save updated mode back (temporarily for this run)
+        logger.info(f"Using mode: {requested_mode}")
+    else:
+        requested_mode = config['pipeline']['mode']
+        logger.info(f"Using default mode from config: {requested_mode}")
+    
+    # Display configuration
     print("\n" + "="*70)
     print("RETAIL FORECASTING PIPELINE WITH LUIGI")
     print("="*70)
+    print(f"Mode: {requested_mode.upper()}")
+    print(f"Zero-shot: {'YES' if config['model']['zero_shot'] else 'NO'}")
+    if config['model']['zero_shot']:
+        print(f"Model: {config['model']['zero_shot_model']}")
+    else:
+        print(f"Training time: {config['training']['time_limit']}s")
+        print(f"Presets: {config['training']['presets']}")
+        print(f"Stores: {config['training']['num_stores'] or 'ALL'}")
+    print(f"Forecast horizon: {config['forecast']['horizon']} days")
+    print("="*70 + "\n")
     
-    # Run the appropriate Luigi task
-    if mode == 'quick':
-        print("Mode: QUICK TEST")
-        print("  - Stores: 3")
-        print("  - Time limit: 2 minutes")
-        print("  - Preset: fast_training")
-        print("="*70 + "\n")
-        
-        success = luigi.build([QuickPipeline()], local_scheduler=True)
-    
-    elif mode == 'medium':
-        print("Mode: MEDIUM RUN")
-        print("  - Stores: 10")
-        print("  - Time limit: 10 minutes")
-        print("  - Preset: medium_quality")
-        print("="*70 + "\n")
-        
+    # Run the Luigi pipeline
+    try:
         success = luigi.build(
-            [ForecastingPipeline(num_stores=10, time_limit=600, presets='medium_quality')],
+            [ForecastingPipeline()],
             local_scheduler=True
         )
-    
-    elif mode == 'production':
-        print("Mode: PRODUCTION")
-        print("  - Stores: ALL")
-        print("  - Time limit: 30 minutes")
-        print("  - Preset: high_quality")
-        print("="*70 + "\n")
         
-        success = luigi.build([ProductionPipeline()], local_scheduler=True)
-    
-    # Check results
-    if success:
-        print("\n" + "="*70)
-        print(" PIPELINE COMPLETED SUCCESSFULLY!")
-        print("="*70)
-        print("\nCheck outputs:")
-        print("  - Predictions: outputs/predictions_*.csv")
-        print("  - Models: models/")
-        print("  - Luigi outputs: luigi_outputs/")
-        print("\nView MLflow experiments:")
-        print("  mlflow ui")
-        print("="*70 + "\n")
-        return 0
-    else:
-        print("\n" + "="*70)
-        print(" PIPELINE FAILED")
-        print("="*70)
-        print("\nCheck the logs above for details.")
-        print("="*70 + "\n")
+        if success:
+            print("\n" + "="*70)
+            print("✓ PIPELINE COMPLETED SUCCESSFULLY!")
+            print("="*70)
+            print("\nOutputs:")
+            print(f"  - Predictions: {config['output']['predictions_dir']}/")
+            print(f"  - Models: {config['output']['models_dir']}/")
+            print(f"  - Luigi state: {config['output']['luigi_dir']}/")
+            print("\nNext steps:")
+            print("  - View predictions: ls -la outputs/")
+            print("  - View MLflow: mlflow ui")
+            print("  - Change settings: edit config.yaml")
+            print("="*70 + "\n")
+            return 0
+        else:
+            print("\n" + "="*70)
+            print("❌ PIPELINE FAILED")
+            print("="*70)
+            print("\nCheck the logs above for details.")
+            print("="*70 + "\n")
+            return 1
+            
+    except Exception as e:
+        logger.error(f"Pipeline error: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 

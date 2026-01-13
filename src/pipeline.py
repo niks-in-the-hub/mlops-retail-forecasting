@@ -1,30 +1,31 @@
 """
 Luigi orchestration for retail forecasting pipeline.
-Simple task-based workflow orchestration.
+Simple task-based workflow orchestration with config support.
 """
 
 import luigi
 import logging
 import pickle
 from pathlib import Path
-from utils import setup_logging, create_output_dir, get_current_timestamp
+from utils import setup_logging, create_output_dir, load_config
 from preprocess import preprocess_pipeline
 from train import train_pipeline
 from predict import predict_pipeline
 
 
+# ============================================================================
 # LUIGI TASKS
+# ============================================================================
 
 class PreprocessTask(luigi.Task):
     """
     Task 1: Preprocess the data.
     """
-    num_stores = luigi.IntParameter(default=10)
-    val_days = luigi.IntParameter(default=7)
     
     def output(self):
         """Define output files for this task."""
-        output_dir = Path(create_output_dir("luigi_outputs"))
+        config = load_config()
+        output_dir = Path(create_output_dir(config['output']['luigi_dir']))
         return {
             'train': luigi.LocalTarget(str(output_dir / 'train_data.pkl')),
             'val': luigi.LocalTarget(str(output_dir / 'val_data.pkl'))
@@ -33,15 +34,14 @@ class PreprocessTask(luigi.Task):
     def run(self):
         """Run preprocessing."""
         logger = setup_logging()
+        config = load_config()
+        
         logger.info("="*70)
         logger.info("LUIGI TASK: Preprocessing")
         logger.info("="*70)
         
-        # Run preprocessing
-        train_df, val_df = preprocess_pipeline(
-            num_stores=self.num_stores,
-            val_days=self.val_days
-        )
+        # Run preprocessing with config
+        train_df, val_df = preprocess_pipeline(config=config)
         
         # Save outputs (BINARY mode for pickle)
         with open(self.output()['train'].path, 'wb') as f:
@@ -50,26 +50,23 @@ class PreprocessTask(luigi.Task):
         with open(self.output()['val'].path, 'wb') as f:
             pickle.dump(val_df, f)
         
-        logger.info(" Preprocessing complete")
+        logger.info("✓ Preprocessing complete")
 
 
 class TrainTask(luigi.Task):
     """
-    Task 2: Train the model.
+    Task 2: Train the model (SKIPPED if zero_shot=yes).
     Depends on PreprocessTask.
     """
-    num_stores = luigi.IntParameter(default=10)
-    val_days = luigi.IntParameter(default=7)
-    time_limit = luigi.IntParameter(default=600)
-    presets = luigi.Parameter(default='medium_quality')
     
     def requires(self):
         """This task requires PreprocessTask to complete first."""
-        return PreprocessTask(num_stores=self.num_stores, val_days=self.val_days)
+        return PreprocessTask()
     
     def output(self):
         """Define output files for this task."""
-        output_dir = Path(create_output_dir("luigi_outputs"))
+        config = load_config()
+        output_dir = Path(create_output_dir(config['output']['luigi_dir']))
         return {
             'model_path': luigi.LocalTarget(str(output_dir / 'model_path.txt')),
             'metrics': luigi.LocalTarget(str(output_dir / 'metrics.pkl'))
@@ -78,6 +75,8 @@ class TrainTask(luigi.Task):
     def run(self):
         """Run training."""
         logger = setup_logging()
+        config = load_config()
+        
         logger.info("="*70)
         logger.info("LUIGI TASK: Training")
         logger.info("="*70)
@@ -89,19 +88,22 @@ class TrainTask(luigi.Task):
         with open(self.input()['val'].path, 'rb') as f:
             val_df = pickle.load(f)
         
-        # Train model
-        config = {
-            'prediction_length': 7,
-            'time_limit': self.time_limit,
-            'presets': self.presets,
-            'eval_metric': 'MASE',
-            'freq': 'D'
+        # Build training config from YAML
+        train_config = {
+            'prediction_length': config['forecast']['horizon'],
+            'time_limit': config['training']['time_limit'],
+            'presets': config['training']['presets'],
+            'eval_metric': config['model']['eval_metric'],
+            'freq': config['forecast']['frequency'],
+            'zero_shot': config['model']['zero_shot'],
+            'zero_shot_model': config['model'].get('zero_shot_model', 'chronos-t5-base')
         }
         
+        # Train model
         predictor, metrics, model_path = train_pipeline(
             train_df=train_df,
             val_df=val_df,
-            config=config
+            config=train_config
         )
         
         # Save outputs
@@ -111,150 +113,118 @@ class TrainTask(luigi.Task):
         with open(self.output()['metrics'].path, 'wb') as f:
             pickle.dump(metrics, f)
         
-        logger.info(" Training complete")
+        logger.info("✓ Training complete")
 
 
 class PredictTask(luigi.Task):
     """
     Task 3: Generate predictions.
-    Depends on TrainTask.
+    Depends on TrainTask OR PreprocessTask (if zero-shot).
     """
-    num_stores = luigi.IntParameter(default=10)
-    val_days = luigi.IntParameter(default=7)
-    time_limit = luigi.IntParameter(default=600)
-    presets = luigi.Parameter(default='medium_quality')
     
     def requires(self):
-        """This task requires TrainTask to complete first."""
-        return TrainTask(
-            num_stores=self.num_stores,
-            val_days=self.val_days,
-            time_limit=self.time_limit,
-            presets=self.presets
-        )
+        """This task requires TrainTask OR PreprocessTask (if zero-shot)."""
+        config = load_config()
+        zero_shot = config['model']['zero_shot']
+        
+        if zero_shot:
+            # Zero-shot: skip training, only need preprocessing
+            return PreprocessTask()
+        else:
+            # Training mode: need trained model
+            return TrainTask()
     
     def output(self):
         """Define output files for this task."""
-        output_dir = Path(create_output_dir("luigi_outputs"))
+        config = load_config()
+        output_dir = Path(create_output_dir(config['output']['luigi_dir']))
         return luigi.LocalTarget(str(output_dir / 'predictions_path.txt'))
     
     def run(self):
         """Run prediction."""
         logger = setup_logging()
+        config = load_config()
+    
         logger.info("="*70)
         logger.info("LUIGI TASK: Prediction")
         logger.info("="*70)
+    
+        zero_shot = config['model']['zero_shot']
+    
+        if zero_shot:
+            # Zero-shot path: load data and use pre-trained model
+            preprocess_task = PreprocessTask()
+            with open(preprocess_task.output()['val'].path, 'rb') as f:
+                val_df = pickle.load(f)
         
-        # Load model path
-        with self.input()['model_path'].open('r') as f:
-            model_path = f.read().strip()
+            # Use zero-shot model (model_path will be placeholder)
+            model_path = f"zero_shot_{config['model']['zero_shot_model']}"
         
-        # Load validation data from PreprocessTask (BINARY mode)
-        preprocess_task = PreprocessTask(num_stores=self.num_stores, val_days=self.val_days)
-        with open(preprocess_task.output()['val'].path, 'rb') as f:
-            val_df = pickle.load(f)
+        else:
+            # Training path: load model path
+            with self.input()['model_path'].open('r') as f:
+                model_path = f.read().strip()
         
-        # Generate predictions
+            # Load validation data
+            preprocess_task = PreprocessTask()
+            with open(preprocess_task.output()['val'].path, 'rb') as f:
+                val_df = pickle.load(f)
+    
+        # Generate predictions (PASS zero_shot FLAG)
         predictions_df, summary, save_path = predict_pipeline(
             model_path=model_path,
             data=val_df,
-            save_output=True
+            save_output=True,
+            zero_shot=zero_shot  # ADD THIS
         )
-        
+    
         # Save output path
         with self.output().open('w') as f:
             f.write(save_path)
-        
-        logger.info(" Predictions complete")
+    
+        mode_str = "ZERO-SHOT" if zero_shot else "TRAINED"
+        logger.info("✓ Predictions complete")
         logger.info("="*70)
-        logger.info("PIPELINE COMPLETE!")
+        logger.info(f"PIPELINE COMPLETE ({mode_str} MODE)!")
         logger.info(f"Predictions saved to: {save_path}")
         logger.info("="*70)
 
 
+# ============================================================================
 # WRAPPER TASK (MAIN PIPELINE)
+# ============================================================================
 
 class ForecastingPipeline(luigi.Task):
     """
-    Main pipeline task that runs all steps.
-    This is what you run to execute the entire pipeline.
+    Main pipeline task that runs all steps based on config.
     """
-    num_stores = luigi.IntParameter(default=10)
-    val_days = luigi.IntParameter(default=7)
-    time_limit = luigi.IntParameter(default=600)
-    presets = luigi.Parameter(default='medium_quality')
     
     def requires(self):
         """Require the final task (which will trigger all dependencies)."""
-        return PredictTask(
-            num_stores=self.num_stores,
-            val_days=self.val_days,
-            time_limit=self.time_limit,
-            presets=self.presets
-        )
+        return PredictTask()
     
     def output(self):
         """Pipeline completion marker."""
-        output_dir = Path(create_output_dir("luigi_outputs"))
+        config = load_config()
+        output_dir = Path(create_output_dir(config['output']['luigi_dir']))
         return luigi.LocalTarget(str(output_dir / 'pipeline_complete.txt'))
     
     def run(self):
         """Mark pipeline as complete."""
         logger = setup_logging()
+        config = load_config()
         
         # Load results
         with self.input().open('r') as f:
             predictions_path = f.read().strip()
         
         # Write completion marker
+        mode_str = "ZERO-SHOT" if config['model']['zero_shot'] else "TRAINED"
         with self.output().open('w') as f:
-            f.write(f"Pipeline completed successfully!\nPredictions: {predictions_path}\n")
+            f.write(f"Pipeline completed successfully! ({mode_str} mode)\n")
+            f.write(f"Predictions: {predictions_path}\n")
         
         logger.info("\n" + "="*70)
-        logger.info(" ENTIRE PIPELINE COMPLETED SUCCESSFULLY")
+        logger.info(f"✓✓✓ ENTIRE PIPELINE COMPLETED SUCCESSFULLY ({mode_str}) ✓✓✓")
         logger.info(f"Predictions: {predictions_path}")
         logger.info("="*70 + "\n")
-
-
-# CONVENIENCE TASKS
-
-class QuickPipeline(luigi.Task):
-    """Quick test pipeline - 3 stores, 2 minutes."""
-    
-    def requires(self):
-        return ForecastingPipeline(
-            num_stores=3,
-            val_days=7,
-            time_limit=120,
-            presets='fast_training'
-        )
-    
-    def output(self):
-        output_dir = Path(create_output_dir("luigi_outputs"))
-        return luigi.LocalTarget(str(output_dir / 'quick_pipeline_complete.txt'))
-    
-    def run(self):
-        with self.output().open('w') as f:
-            f.write("Quick pipeline completed!\n")
-
-
-class ProductionPipeline(luigi.Task):
-    """Production pipeline - all stores, 30 minutes."""
-    
-    num_stores = luigi.IntParameter(default=None)
-    
-    def requires(self):
-        return ForecastingPipeline(
-            num_stores=self.num_stores if self.num_stores else 1000,
-            val_days=14,
-            time_limit=1800,
-            presets='high_quality'
-        )
-    
-    def output(self):
-        output_dir = Path(create_output_dir("luigi_outputs"))
-        return luigi.LocalTarget(str(output_dir / 'production_pipeline_complete.txt'))
-    
-    def run(self):
-        with self.output().open('w') as f:
-            f.write("Production pipeline completed!\n")

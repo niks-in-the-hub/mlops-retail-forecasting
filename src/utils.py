@@ -252,3 +252,75 @@ def print_data_summary(df, name="Data"):
     logger.info(f"Columns: {list(df.columns)}")
     logger.info(f"Memory: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
     logger.info(f"{'='*50}\n")
+
+# ============================================================================
+# CONFIG LOADING
+# ============================================================================
+
+def load_config(config_path='config.yaml'):
+    """
+    Load configuration from YAML file.
+    
+    Args:
+        config_path: Path to config file (default: config.yaml in project root)
+    
+    Returns:
+        Dictionary with configuration
+    """
+    import yaml
+    
+    logger = logging.getLogger(__name__)
+    
+    # Get absolute path
+    if not os.path.isabs(config_path):
+        project_root = get_project_root()
+        config_path = project_root / config_path
+    
+    # Check if config exists
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    
+    # Load config
+    logger.info(f"Loading configuration from: {config_path}")
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Apply mode-specific overrides
+    mode = config.get('pipeline', {}).get('mode', 'quick')
+    if mode in config.get('modes', {}):
+        mode_config = config['modes'][mode]
+        logger.info(f"Applying mode: {mode}")
+        
+        # Deep merge mode config into main config
+        for key, value in mode_config.items():
+            if isinstance(value, dict) and key in config:
+                config[key].update(value)
+            else:
+                config[key] = value
+    
+    logger.info("Configuration loaded successfully")
+    return config
+
+
+def get_config_value(config, *keys, default=None):
+    """
+    Safely get nested config value.
+    
+    Args:
+        config: Configuration dictionary
+        *keys: Nested keys to traverse
+        default: Default value if key not found
+    
+    Returns:
+        Config value or default
+    
+    Example:
+        get_config_value(config, 'training', 'time_limit', default=600)
+    """
+    value = config
+    for key in keys:
+        if isinstance(value, dict) and key in value:
+            value = value[key]
+        else:
+            return default
+    return value

@@ -237,14 +237,14 @@ def select_stores(df, num_stores=None, store_ids=None):
 
 # FULL PREPROCESSING PIPELINE
 
-def preprocess_pipeline(num_stores=None, val_days=7):
+def preprocess_pipeline(config=None, num_stores=None, val_days=7):
     """
     Run the full preprocessing pipeline.
-    This is the main function to call from other modules.
     
     Args:
-        num_stores: Number of stores to use (None = all stores)
-        val_days: Number of days for validation set
+        config: Configuration dictionary (optional)
+        num_stores: Number of stores to use (overrides config)
+        val_days: Number of days for validation (overrides config)
     
     Returns:
         Tuple of (train_df, val_df) ready for AutoGluon
@@ -253,6 +253,17 @@ def preprocess_pipeline(num_stores=None, val_days=7):
     logger.info("="*60)
     logger.info("Starting preprocessing pipeline")
     logger.info("="*60)
+    
+    # Load config if not provided
+    if config is None:
+        from utils import load_config
+        config = load_config()
+    
+    # Get settings from config (allow overrides)
+    if num_stores is None:
+        num_stores = config.get('training', {}).get('num_stores')
+    if val_days is None:
+        val_days = config.get('forecast', {}).get('validation_days', 7)
     
     # Step 1: Load and merge
     df = load_and_merge_data()

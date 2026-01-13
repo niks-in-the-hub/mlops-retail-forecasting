@@ -1,2 +1,2 @@
-Pipeline completed successfully!
-Predictions: /Users/nikkitharamesh/Desktop/mlops-retail-forecasting/outputs/predictions_20260113_105943.csv
+Pipeline completed successfully! (ZERO-SHOT mode)
+Predictions: /Users/nikkitharamesh/Desktop/mlops-retail-forecasting/outputs/predictions_20260113_131232.csv
