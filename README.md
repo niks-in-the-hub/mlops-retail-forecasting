@@ -1,11 +1,11 @@
 # MLOps Retail Forecasting
 
-A production-ready MLOps pipeline for retail demand forecasting using AutoGluon TimeSeries with MLflow tracking and Metaflow orchestration.
+A production-ready MLOps pipeline for retail demand forecasting using AutoGluon TimeSeries with MLflow tracking and Luigi orchestration.
 
 ## Features
 
 - **Automated ML Pipeline**: End-to-end forecasting with AutoGluon TimeSeries
-- **MLOps Integration**: Experiment tracking with MLflow, workflow orchestration with Metaflow
+- **MLOps Integration**: Experiment tracking with MLflow, workflow orchestration with Luigi
 - **Production Ready**: Configurable preprocessing, model training, and prediction pipelines
 - **Multiple Modes**: Quick prototyping and production deployment options
 - **Comprehensive Logging**: Structured logging for monitoring and debugging

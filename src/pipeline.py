@@ -1,3 +1,8 @@
+"""
+Luigi orchestration for retail forecasting pipeline.
+Simple task-based workflow orchestration.
+"""
+
 import luigi
 import logging
 import pickle
@@ -38,14 +43,14 @@ class PreprocessTask(luigi.Task):
             val_days=self.val_days
         )
         
-        # Save outputs
-        with self.output()['train'].open('w') as f:
+        # Save outputs (BINARY mode for pickle)
+        with open(self.output()['train'].path, 'wb') as f:
             pickle.dump(train_df, f)
         
-        with self.output()['val'].open('w') as f:
+        with open(self.output()['val'].path, 'wb') as f:
             pickle.dump(val_df, f)
         
-        logger.info("✓ Preprocessing complete")
+        logger.info(" Preprocessing complete")
 
 
 class TrainTask(luigi.Task):
@@ -77,11 +82,11 @@ class TrainTask(luigi.Task):
         logger.info("LUIGI TASK: Training")
         logger.info("="*70)
         
-        # Load preprocessed data
-        with self.input()['train'].open('r') as f:
+        # Load preprocessed data (BINARY mode for pickle)
+        with open(self.input()['train'].path, 'rb') as f:
             train_df = pickle.load(f)
         
-        with self.input()['val'].open('r') as f:
+        with open(self.input()['val'].path, 'rb') as f:
             val_df = pickle.load(f)
         
         # Train model
@@ -103,10 +108,10 @@ class TrainTask(luigi.Task):
         with self.output()['model_path'].open('w') as f:
             f.write(model_path)
         
-        with self.output()['metrics'].open('w') as f:
+        with open(self.output()['metrics'].path, 'wb') as f:
             pickle.dump(metrics, f)
         
-        logger.info("✓ Training complete")
+        logger.info(" Training complete")
 
 
 class PredictTask(luigi.Task):
@@ -140,13 +145,13 @@ class PredictTask(luigi.Task):
         logger.info("LUIGI TASK: Prediction")
         logger.info("="*70)
         
-        # Load model path and validation data
+        # Load model path
         with self.input()['model_path'].open('r') as f:
             model_path = f.read().strip()
         
-        # Load validation data from PreprocessTask
+        # Load validation data from PreprocessTask (BINARY mode)
         preprocess_task = PreprocessTask(num_stores=self.num_stores, val_days=self.val_days)
-        with preprocess_task.output()['val'].open('r') as f:
+        with open(preprocess_task.output()['val'].path, 'rb') as f:
             val_df = pickle.load(f)
         
         # Generate predictions
@@ -160,14 +165,14 @@ class PredictTask(luigi.Task):
         with self.output().open('w') as f:
             f.write(save_path)
         
-        logger.info("✓ Predictions complete")
+        logger.info(" Predictions complete")
         logger.info("="*70)
         logger.info("PIPELINE COMPLETE!")
         logger.info(f"Predictions saved to: {save_path}")
         logger.info("="*70)
 
 
-# MAIN PIPELINE
+# WRAPPER TASK (MAIN PIPELINE)
 
 class ForecastingPipeline(luigi.Task):
     """
@@ -206,7 +211,7 @@ class ForecastingPipeline(luigi.Task):
             f.write(f"Pipeline completed successfully!\nPredictions: {predictions_path}\n")
         
         logger.info("\n" + "="*70)
-        logger.info("✓✓✓ ENTIRE PIPELINE COMPLETED SUCCESSFULLY ✓✓✓")
+        logger.info(" ENTIRE PIPELINE COMPLETED SUCCESSFULLY")
         logger.info(f"Predictions: {predictions_path}")
         logger.info("="*70 + "\n")
 
