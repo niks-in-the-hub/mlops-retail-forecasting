@@ -79,8 +79,7 @@ mlops-retail-forecasting/
 ├── README.md                 # Project documentation
 ├── requirements.txt          # Python dependencies
 ├── run.py                   # Main entry point
-├── config.yaml              # Pipeline configuration
-utilities
+├── config.yaml              # Pipeline configuration utilities
 ├── .gitignore              # Git ignore rules
 │
 ├── src/                    # Source code
