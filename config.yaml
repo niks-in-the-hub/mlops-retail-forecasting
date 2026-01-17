@@ -15,7 +15,7 @@ forecast:
 
 # MODEL SETTINGS
 model:
-  zero_shot: yes                       # yes or no
+  zero_shot: no                       # yes or no
   zero_shot_model: chronos-t5-base   # chronos-t5-tiny, small, base, large
   eval_metric: MASE                   # MASE, MAE, RMSE, MAPE
   

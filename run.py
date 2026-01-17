@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from pipeline import ForecastingPipeline
-from utils import load_config, setup_logging
+from utils import load_config, setup_logging, get_current_timestamp
 
 
 def print_usage():
@@ -29,6 +29,9 @@ def print_usage():
     print("  Edit config.yaml to change settings")
     print("  Change 'pipeline: mode:' to switch modes")
     print("  Set 'zero_shot: yes' for instant forecasts")
+    print("\nNote:")
+    print("  Each run creates new outputs with timestamps")
+    print("  Old runs are preserved in luigi_outputs/")
     print("="*70 + "\n")
 
 
@@ -77,10 +80,15 @@ def main():
         requested_mode = config['pipeline']['mode']
         logger.info(f"Using default mode from config: {requested_mode}")
     
+    # Generate unique run ID (timestamp-based)
+    run_id = get_current_timestamp()
+    logger.info(f"Generated run ID: {run_id}")
+    
     # Display configuration
     print("\n" + "="*70)
     print("RETAIL FORECASTING PIPELINE WITH LUIGI")
     print("="*70)
+    print(f"Run ID: {run_id}")
     print(f"Mode: {requested_mode.upper()}")
     print(f"Zero-shot: {'YES' if config['model']['zero_shot'] else 'NO'}")
     if config['model']['zero_shot']:
@@ -92,10 +100,10 @@ def main():
     print(f"Forecast horizon: {config['forecast']['horizon']} days")
     print("="*70 + "\n")
     
-    # Run the Luigi pipeline
+    # Run the Luigi pipeline with unique run_id
     try:
         success = luigi.build(
-            [ForecastingPipeline()],
+            [ForecastingPipeline(run_id=run_id)],
             local_scheduler=True
         )
         
@@ -103,6 +111,7 @@ def main():
             print("\n" + "="*70)
             print("✓ PIPELINE COMPLETED SUCCESSFULLY!")
             print("="*70)
+            print(f"\nRun ID: {run_id}")
             print("\nOutputs:")
             print(f"  - Predictions: {config['output']['predictions_dir']}/")
             print(f"  - Models: {config['output']['models_dir']}/")
@@ -111,6 +120,7 @@ def main():
             print("  - View predictions: ls -la outputs/")
             print("  - View MLflow: mlflow ui")
             print("  - Change settings: edit config.yaml")
+            print("  - Run again: python run.py quick (creates new run)")
             print("="*70 + "\n")
             return 0
         else:
